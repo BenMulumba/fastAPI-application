@@ -1,7 +1,70 @@
-from fastapi import APIRouter
+from typing import Annotated
+from fastapi import APIRouter, Depends   
+from pydantic import BaseModel
+from database import SessionLocal
+from sqlalchemy.orm import Session
+from models import Users
+# (installing bcrypt and passlib to implement hashed password)
+from passlib.context import CryptContext
+from fastapi.security import OAuth2PasswordRequestForm #  to use it as a dependency injection for APIs
+
 
 router = APIRouter()
 
-@router.get('/auth/')
-async def get_user ():
-    return {'user': 'authenticated'}
+bcrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+
+class CreateUserRequest (BaseModel):
+    username : str
+    email: str
+    first_name: str
+    last_name: str
+    password: str
+    role: str
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+db_dependency = Annotated[Session, Depends(get_db)]
+
+
+
+# creating a new function 
+def authenticate_user (username: str,password:str, db):
+    user = db.query(Users).filter(Users.username == username).first() #here we're gonna take only the first reponse 
+    if not user: #means if the user is empty or none
+        return False
+    if not bcrypt_context.verify(password, Users.hashed_password):  #check if the password is correct 
+        return False
+    return True
+
+
+
+@router.post('/auth/')
+async def create_user (db: db_dependency, create_user_request: CreateUserRequest):
+    create_user_model = Users (
+        email= create_user_request.email,
+        username =create_user_request.username,
+        first_name = create_user_request.first_name,
+        last_name = create_user_request.last_name,
+        hashed_password = bcrypt_context.hash(create_user_request.password), #the hash method uses algorithm that hides the user password
+        is_active = True,
+        role = create_user_request.role,
+    )
+    db.add(create_user_model)
+    db.commit()
+
+
+
+# creating a Json token for authentication
+@router.post ("/token")
+async def log_for_access_token (form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: db_dependency): #this is what generat the authomated request body for user auth.
+    user = authenticate_user (form_data.username,form_data.password, db)
+    if not user:
+        return 'Failed Authentication'
+    return 'Seccessful Authentication'
+    
+    
