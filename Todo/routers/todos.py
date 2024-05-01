@@ -28,7 +28,7 @@ class TodoRequest(BaseModel):
 
 
 
-@router.get("/",status_code=status.HTTP_200_OK)
+@router.get("/todo",status_code=status.HTTP_200_OK)
 async def read_all (db:db_dependency):
     return db.query(todos).all()
 
